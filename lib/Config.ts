@@ -286,11 +286,12 @@ export class Config implements IConfig {
      */
     public mixinLimits: MixinLimits = new MixinLimits([
 	
-            new MixinLimits_1.MixinLimit(440000, 0, 3, 3),
+            new MixinLimit(440000, 0, 3, 3),
             /* At height of 471000, static mixin of 7 */
-            new MixinLimits_1.MixinLimit(471000, 0, 3, 3),
+            new MixinLimit(471000, 0, 3, 3),
             /* At height of 472000, static mixin of 3 */
-            new MixinLimits_1.MixinLimit(472000, 0, 3, 3),
+            new MixinLimit(472000, 0, 3, 3),
+
     ], 3 /* Default mixin of 3 before block 440,000 */);
 
     /**
