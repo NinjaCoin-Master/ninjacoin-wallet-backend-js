@@ -1,16 +1,13 @@
 ![image](https://user-images.githubusercontent.com/34389545/35821974-62e0e25c-0a70-11e8-87dd-2cfffeb6ed47.png)
 
-#### Master Build Status
-[![Build Status](https://travis-ci.org/turtlecoin/turtlecoin-wallet-backend-js.svg?branch=master)](https://travis-ci.org/turtlecoin/turtlecoin-wallet-backend-js)
-
 #### NPM
-[![NPM](https://nodei.co/npm/turtlecoin-wallet-backend.png?compact=true)](https://npmjs.org/package/turtlecoin-wallet-backend)
+[![NPM](https://nodei.co/npm/ninjacoin-wallet-backend.png?compact=true)](https://npmjs.org/package/ninjacoin-wallet-backend)
 
 #### Github
 
-https://github.com/turtlecoin/turtlecoin-wallet-backend-js
+https://github.com/ninjacoin-master/ninjacoin-wallet-backend-js
 
-# turtlecoin-wallet-backend
+# ninjacoin-wallet-backend
 
 Provides an interface to the TurtleCoin network, allowing wallet applications to be built.
 
@@ -22,34 +19,34 @@ Provides an interface to the TurtleCoin network, allowing wallet applications to
 
 NPM:
 
-`npm install turtlecoin-wallet-backend --save`
+`npm install ninjacoin-wallet-backend --save`
 
 Yarn:
 
-`yarn add turtlecoin-wallet-backend`
+`yarn add ninjacoin-wallet-backend`
 
 ## Documentation
 
-[You can view the documentation here](https://turtlecoin.github.io/turtlecoin-wallet-backend-js/classes/_walletbackend_.walletbackend.html)
+[You can view the documentation here](https://turtlecoin.github.io/ninjacoin-wallet-backend-js/classes/_walletbackend_.walletbackend.html)
 
 You can see a list of all the other classes on the right side of the screen.
-Note that you will need to prefix them all with `WB.` to access them, if you are not using typescript style imports, assuming you imported with `const WB = require('turtlecoin-wallet-backend')`.
+Note that you will need to prefix them all with `WB.` to access them, if you are not using typescript style imports, assuming you imported with `const WB = require('ninjacoin-wallet-backend')`.
 
 ## Quick Start
 
-You can find an [example project in the examples](https://github.com/turtlecoin/turtlecoin-wallet-backend-js/tree/master/examples/example1) folder.
+You can find an [example project in the examples](https://github.com/ninjacoin-master/ninjacoin-wallet-backend-js/tree/master/examples/example1) folder.
 
 ### Javascript
 
 ```javascript
-const WB = require('turtlecoin-wallet-backend');
+const WB = require('ninjacoin-wallet-backend');
 
 (async () => {
-    const daemon = new WB.Daemon('127.0.0.1', 11898);
+    const daemon = new WB.Daemon('127.0.0.1', 11801);
     /* OR
     const daemon = new WB.Daemon('blockapi.turtlepay.io', 443);
     */
-    
+
     const wallet = WB.WalletBackend.createWallet(daemon);
 
     console.log('Created wallet');
@@ -70,10 +67,10 @@ const WB = require('turtlecoin-wallet-backend');
 ### Typescript
 
 ```typescript
-import { WalletBackend, Daemon, IDaemon } from 'turtlecoin-wallet-backend';
+import { WalletBackend, Daemon, IDaemon } from 'ninjacoin-wallet-backend';
 
 (async () => {
-    const daemon: IDaemon = new Daemon('127.0.0.1', 11898);
+    const daemon: IDaemon = new Daemon('127.0.0.1', 11801);
 
     /* OR
     const daemon: IDaemon = new Daemon('blockapi.turtlepay.io', 443);
@@ -163,6 +160,62 @@ In this example, we only print messages that fall into the SYNC category.
 You can view available categories and log levels in the documentation.
 
 ## Changelog
+
+### v6.0.7
+
+* Fix bug when scanning coinbase transactions and not using `/sync/raw`
+
+### v6.0.6
+
+* Upgrade turtlecoin-utils and other dependencies
+* Documentation updates
+* Test suite updates
+
+### v6.0.5
+
+* Fix issue halting sync when transaction is missing a transaction public key
+
+### v6.0.4
+
+* Fix issue generating transactions with a ledger
+
+### v6.0.3
+
+* Update turtlecoin-utils
+* New events emitted when a ledger is waiting for user input
+
+### v6.0.2
+
+* Fix object-sizeof being incorrectly imported
+
+### v6.0.2
+
+* Fix bug where package.json was not correctly read in npm release
+
+### v6.0.0
+
+* Supports v1.0.0 daemon API
+* No longer supports v0.28.3 daemon API
+* Supports using a ledger nano to control private keys
+* Can specify whether you want to sync with raw blocks or not when initializing daemon
+* Fix auto optimize disabling not working correctly
+* Warn users when using non native crypto
+* Can send extra data with tx
+* More prepared transaction functions
+
+### v5.0.4
+
+* Sleeping between block download failures or when fully synced has been re-added, in a more effective way.
+* `sendTransactionBasic` and `sendTransactionAdvanced` now also returns the node fee and destinations sent to.
+* Fusion transactions are now fixed
+
+### v5.0.3
+
+* It is now possible to specify multiple destinations when setting `sendAll`. See the new docs for more information.
+
+### v5.0.2
+
+* Fix prepared transactions being incorrectly stored
 
 ### v5.0.1
 
@@ -363,11 +416,13 @@ Start of changelog.
 
 ### Building (For Developers)
 
-`git clone https://github.com/turtlecoin/turtlecoin-wallet-backend-js.git`
+`git clone https://github.com/ninjacoin-master/ninjacoin-wallet-backend-js.git`
 
-`cd turtlecoin-wallet-backend`
+`cd ninjacoin-wallet-backend`
 
 `npm install -g yarn` (Skip this if you already have yarn installed)
+
+`yarn install`
 
 `yarn build`
 
@@ -382,10 +437,7 @@ Generated javascript files will be written to the dist/lib/ folder.
 ### Before making a PR
 
 * Ensure you are editing the TypeScript code, and not the JavaScript code (You should be in the `lib/` folder)
-* Ensure you have built the JavaScript code from the TypeScript code: `yarn build`
 * Ensure you have updated the documentation if necessary - Documentation is generated from inline comments, jsdoc style.
 * Ensure you have rebuilt the documentation, if you have changed it: `yarn docs`
 * Ensure the tests all still pass: `yarn test`, or `yarn test-all` if you have a local daemon running.
-* Ensure your code adheres to the style requirements: `yarn style`
-
-You can try running `yarn style --fix` to automatically fix issues.
+* If adding a feature/fixing a bug, adding a test to verify your fix/feature functions as expected would be great. But don't sweat it.

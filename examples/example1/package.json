@@ -4,6 +4,6 @@
   "main": "index.js",
   "license": "MIT",
   "dependencies": {
-    "turtlecoin-wallet-backend": "https://github.com/turtlecoin/turtlecoin-wallet-backend-js"
+    "ninjacoin-wallet-backend": "https://github.com/ninjacoin-master/ninjacoin-wallet-backend-js"
   }
 }

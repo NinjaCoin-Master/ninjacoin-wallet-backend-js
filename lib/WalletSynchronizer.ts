@@ -3,14 +3,14 @@
 // Please see the included LICENSE file for more information.
 
 import * as _ from 'lodash';
-const sizeof = require('object-sizeof');
+import { sizeof } from 'object-sizeof';
 
 import { EventEmitter } from 'events';
 
 import { Config } from './Config';
-import { IDaemon } from './IDaemon';
+import { Daemon } from './Daemon';
 import { SubWallets } from './SubWallets';
-import { delay, prettyPrintBytes } from './Utilities';
+import { prettyPrintBytes } from './Utilities';
 import { LAST_KNOWN_BLOCK_HASHES_SIZE } from './Constants';
 import { SynchronizationStatus } from './SynchronizationStatus';
 import { WalletSynchronizerJSON } from './JsonSerialization';
@@ -18,7 +18,7 @@ import { LogCategory, logger, LogLevel } from './Logger';
 import { underivePublicKey, generateKeyDerivation } from './CryptoWrapper';
 
 import {
-    Block, KeyInput, RawCoinbaseTransaction, RawTransaction, Transaction,
+    Block, RawCoinbaseTransaction, RawTransaction, Transaction,
     TransactionData, TransactionInput, TopBlock,
 } from './Types';
 
@@ -42,7 +42,7 @@ export class WalletSynchronizer extends EventEmitter {
     /**
      * The daemon instance to retrieve blocks from
      */
-    private daemon: IDaemon;
+    private daemon: Daemon;
 
     /**
      * The timestamp to start taking blocks from
@@ -92,11 +92,6 @@ export class WalletSynchronizer extends EventEmitter {
     private finishedFunc: (() => void) | undefined = undefined;
 
     /**
-     * Number of times we've failed to fetch blocks.
-     */
-    private failCount: number = 0;
-
-    /**
      * Last time we fetched blocks from the daemon. If this goes over the
      * configured limit, we'll emit deadnode.
      */
@@ -105,7 +100,7 @@ export class WalletSynchronizer extends EventEmitter {
     private config: Config = new Config();
 
     constructor(
-        daemon: IDaemon,
+        daemon: Daemon,
         subWallets: SubWallets,
         startTimestamp: number,
         startHeight: number,
@@ -131,14 +126,13 @@ export class WalletSynchronizer extends EventEmitter {
     /**
      * Initialize things we can't initialize from the JSON
      */
-    public initAfterLoad(subWallets: SubWallets, daemon: IDaemon, config: Config): void {
+    public initAfterLoad(subWallets: SubWallets, daemon: Daemon, config: Config): void {
         this.subWallets = subWallets;
         this.daemon = daemon;
         this.storedBlocks = [];
         this.config = config;
         this.cancelledTransactionsFailCount = new Map();
         this.lastDownloadedBlocks = new Date();
-        this.failCount = 0;
     }
 
     /**
@@ -155,7 +149,7 @@ export class WalletSynchronizer extends EventEmitter {
 
     public processBlock(
         block: Block,
-        ourInputs: Array<[string, TransactionInput]>) {
+        ourInputs: [string, TransactionInput][]): TransactionData {
 
         const txData: TransactionData = new TransactionData();
 
@@ -191,16 +185,20 @@ export class WalletSynchronizer extends EventEmitter {
      * Process transaction outputs of the given block. No external dependencies,
      * lets us easily swap out with a C++ replacement for SPEEEED
      *
-     * @param keys Array of spend keys in the format [publicKey, privateKey]
+     * @param block
+     * @param privateViewKey
+     * @param spendKeys Array of spend keys in the format [publicKey, privateKey]
+     * @param isViewWallet
+     * @param processCoinbaseTransactions
      */
     public async processBlockOutputs(
         block: Block,
         privateViewKey: string,
-        spendKeys: Array<[string, string]>,
+        spendKeys: [string, string][],
         isViewWallet: boolean,
-        processCoinbaseTransactions: boolean): Promise<Array<[string, TransactionInput]>> {
+        processCoinbaseTransactions: boolean): Promise<[string, TransactionInput][]> {
 
-        let inputs: Array<[string, TransactionInput]> = [];
+        let inputs: [string, TransactionInput][] = [];
 
         /* Process the coinbase tx if we're not skipping them for speed */
         if (processCoinbaseTransactions && block.coinbaseTransaction) {
@@ -350,7 +348,9 @@ export class WalletSynchronizer extends EventEmitter {
      * Retrieve blockCount blocks from the internal store. Does not remove
      * them.
      */
-    public async fetchBlocks(blockCount: number): Promise<[Block[], number]> {
+    public async fetchBlocks(blockCount: number): Promise<[Block[], boolean]> {
+        let shouldSleep = false;
+
         /* Fetch more blocks if we haven't got any downloaded yet */
         if (this.storedBlocks.length === 0) {
             if (!this.fetchingBlocks) {
@@ -361,28 +361,24 @@ export class WalletSynchronizer extends EventEmitter {
                 );
             }
 
-            const [check, downloadSuccess] = await this.downloadBlocks();
+            const [successOrBusy, shouldSleepTmp] = await this.downloadBlocks();
 
-            /* In the middle of fetching blocks, don't need to fetch blocks, etc */
-            if (check) {
-                if (!downloadSuccess) {
-                    this.failCount++;
+            shouldSleep = shouldSleepTmp;
 
-                    /* Seconds since we last got a block */
-                    const diff = (new Date().getTime() - this.lastDownloadedBlocks.getTime()) / 1000;
+            /* Not in the middle of fetching blocks. */
+            if (!successOrBusy) {
+                /* Seconds since we last got a block */
+                const diff = (new Date().getTime() - this.lastDownloadedBlocks.getTime()) / 1000;
 
-                    if (diff > this.config.maxLastFetchedBlockInterval) {
-                        this.emit('deadnode');
-                    }
-
-                } else {
-                    this.lastDownloadedBlocks = new Date();
-                    this.failCount = 0;
+                if (diff > this.config.maxLastFetchedBlockInterval) {
+                    this.emit('deadnode');
                 }
+            } else {
+                this.lastDownloadedBlocks = new Date();
             }
         }
 
-        return [_.take(this.storedBlocks, blockCount), this.failCount];
+        return [_.take(this.storedBlocks, blockCount), shouldSleep];
     }
 
     public dropBlock(blockHeight: number, blockHash: string): void {
@@ -401,21 +397,16 @@ export class WalletSynchronizer extends EventEmitter {
         /* sizeof() gets a tad expensive... */
         if (blockHeight % 10 === 0 && this.shouldFetchMoreBlocks()) {
             /* Note - not awaiting here */
-            this.downloadBlocks().then(([check, downloadSuccess]) => {
-                if (check) {
-                    if (!downloadSuccess) {
-                        this.failCount++;
+            this.downloadBlocks().then(([successOrBusy]) => {
+                if (!successOrBusy) {
+                    /* Seconds since we last got a block */
+                    const diff = (new Date().getTime() - this.lastDownloadedBlocks.getTime()) / 1000;
 
-                        /* Seconds since we last got a block */
-                        const diff = (new Date().getTime() - this.lastDownloadedBlocks.getTime()) / 1000;
-
-                        if (diff > this.config.maxLastFetchedBlockInterval) {
-                            this.emit('deadnode');
-                        }
-                    } else {
-                        this.lastDownloadedBlocks = new Date();
-                        this.failCount = 0;
+                    if (diff > this.config.maxLastFetchedBlockInterval) {
+                        this.emit('deadnode');
                     }
+                } else {
+                    this.lastDownloadedBlocks = new Date();
                 }
             });
         }
@@ -449,11 +440,6 @@ export class WalletSynchronizer extends EventEmitter {
             return false;
         }
 
-        /* Don't fetch more blocks if we've failed to fetch blocks multiple times */
-        if (this.failCount > 2) {
-            return false;
-        }
-
         const ramUsage = sizeof(this.storedBlocks);
 
         if (ramUsage < this.config.blockStoreMemoryLimit) {
@@ -484,10 +470,12 @@ export class WalletSynchronizer extends EventEmitter {
                 .concat(blockHashCheckpoints);
     }
 
+    /* Returns [successOrBusy, shouldSleep] */
     private async downloadBlocks(): Promise<[boolean, boolean]> {
-        /* Don't make more than one fetch request at once */
+        /* Middle of fetching blocks, wait for previous request to complete.
+         * Don't need to sleep. */
         if (this.fetchingBlocks) {
-            return [false, true];
+            return [true, false];
         }
 
         this.fetchingBlocks = true;
@@ -497,7 +485,7 @@ export class WalletSynchronizer extends EventEmitter {
 
         if (localDaemonBlockCount < walletBlockCount) {
             this.fetchingBlocks = false;
-            return [false, true];
+            return [true, true];
         }
 
         /* Get the checkpoints of the blocks we've got stored, so we can fetch
@@ -514,7 +502,7 @@ export class WalletSynchronizer extends EventEmitter {
             );
         } catch (err) {
             logger.log(
-                'Failed to get blocks from daemon',
+                'Failed to get blocks from daemon: ' + err.toString(),
                 LogLevel.DEBUG,
                 LogCategory.SYNC,
             );
@@ -525,7 +513,7 @@ export class WalletSynchronizer extends EventEmitter {
 
             this.fetchingBlocks = false;
 
-            return [true, false];
+            return [false, true];
         }
 
         if (typeof topBlock === 'object' && blocks.length === 0) {
@@ -570,7 +558,7 @@ export class WalletSynchronizer extends EventEmitter {
 
             this.fetchingBlocks = false;
 
-            return [true, topBlock as boolean];
+            return [false, false];
         }
 
         /* Timestamp is transient and can change - block height is constant. */
@@ -592,7 +580,7 @@ export class WalletSynchronizer extends EventEmitter {
 
         this.fetchingBlocks = false;
 
-        return [true, true];
+        return [true, false];
     }
 
     /**
@@ -600,9 +588,13 @@ export class WalletSynchronizer extends EventEmitter {
      */
     private async processTransactionOutputs(
         rawTX: RawCoinbaseTransaction,
-        blockHeight: number): Promise<Array<[string, TransactionInput]>> {
+        blockHeight: number): Promise<[string, TransactionInput][]> {
 
-        const inputs: Array<[string, TransactionInput]> = [];
+        const inputs: [string, TransactionInput][] = [];
+
+        if (rawTX.transactionPublicKey === undefined) {
+            return inputs;
+        }
 
         const derivation: string = await generateKeyDerivation(
             rawTX.transactionPublicKey, this.privateViewKey, this.config,
@@ -647,17 +639,17 @@ export class WalletSynchronizer extends EventEmitter {
 
     private processCoinbaseTransaction(
         block: Block,
-        ourInputs: Array<[string, TransactionInput]>): Transaction | undefined {
+        ourInputs: [string, TransactionInput][]): Transaction | undefined {
 
         /* Should be guaranteed to be defined here */
         const rawTX: RawCoinbaseTransaction = block.coinbaseTransaction as RawCoinbaseTransaction;
 
         const transfers: Map<string, number> = new Map();
 
-        const relevantInputs: Array<[string, TransactionInput]>
-            = _.filter(ourInputs, ([key, input]) => {
-            return input.parentTransactionHash === rawTX.hash;
-        });
+        const relevantInputs: [string, TransactionInput][]
+            = _.filter(ourInputs, ([, input]) => {
+                return input.parentTransactionHash === rawTX.hash;
+            });
 
         for (const [publicSpendKey, input] of relevantInputs) {
             transfers.set(
@@ -686,15 +678,15 @@ export class WalletSynchronizer extends EventEmitter {
 
     private processTransaction(
         block: Block,
-        ourInputs: Array<[string, TransactionInput]>,
-        rawTX: RawTransaction): [Transaction | undefined, Array<[string, string]>] {
+        ourInputs: [string, TransactionInput][],
+        rawTX: RawTransaction): [Transaction | undefined, [string, string][]] {
 
         const transfers: Map<string, number> = new Map();
 
-        const relevantInputs: Array<[string, TransactionInput]>
-            = _.filter(ourInputs, ([key, input]) => {
-            return input.parentTransactionHash === rawTX.hash;
-        });
+        const relevantInputs: [string, TransactionInput][]
+            = _.filter(ourInputs, ([, input]) => {
+                return input.parentTransactionHash === rawTX.hash;
+            });
 
         for (const [publicSpendKey, input] of relevantInputs) {
             transfers.set(
@@ -703,7 +695,7 @@ export class WalletSynchronizer extends EventEmitter {
             );
         }
 
-        const spentKeyImages: Array<[string, string]> = [];
+        const spentKeyImages: [string, string][] = [];
 
         for (const input of rawTX.keyInputs) {
             const [found, publicSpendKey] = this.subWallets.getKeyImageOwner(

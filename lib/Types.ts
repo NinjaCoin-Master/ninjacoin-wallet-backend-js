@@ -2,7 +2,7 @@
 //
 // Please see the included LICENSE file for more information.
 
-import { CreatedTransaction } from 'turtlecoin-utils';
+import { Transaction as CreatedTransaction } from 'turtlecoin-utils';
 
 import { WalletError } from './WalletError';
 
@@ -23,11 +23,11 @@ export class Block {
 
             transactions: json.transactions.map(RawTransaction.fromJSON),
 
-            blockHeight: Number(json.blockHeight),
+            blockHeight: Number(json.height),
 
-            blockHash: json.blockHash,
+            blockHash: json.hash,
 
-            blockTimestamp: Number(json.blockTimestamp),
+            blockTimestamp: Number(json.timestamp),
         });
     }
 
@@ -48,12 +48,11 @@ export class Block {
     public readonly blockTimestamp: number;
 
     constructor(
-        coinbaseTransaction: RawCoinbaseTransaction,
         transactions: RawTransaction[],
         blockHeight: number,
         blockHash: string,
-        blockTimestamp: number) {
-
+        blockTimestamp: number,
+        coinbaseTransaction?: RawCoinbaseTransaction) {
         this.coinbaseTransaction = coinbaseTransaction;
         this.transactions = transactions;
         this.blockHeight = blockHeight;
@@ -74,7 +73,7 @@ export class RawCoinbaseTransaction {
 
             hash: json.hash,
 
-            transactionPublicKey: json.txPublicKey,
+            transactionPublicKey: json.publicKey,
 
             unlockTime: Number(json.unlockTime),
         });
@@ -118,11 +117,11 @@ export class RawTransaction extends RawCoinbaseTransaction {
 
             hash: json.hash,
 
-            transactionPublicKey: json.txPublicKey,
+            transactionPublicKey: json.publicKey,
 
             unlockTime: Number(json.unlockTime),
 
-            paymentID: json.paymentID,
+            paymentID: json.paymentId,
 
             keyInputs: json.inputs.map(KeyInput.fromJSON),
         });
@@ -226,7 +225,7 @@ export class Transaction {
     public totalAmount(): number {
         let sum: number = 0;
 
-        for (const [publicKey, amount] of this.transfers) {
+        for (const [, amount] of this.transfers) {
             sum += amount;
         }
 
@@ -339,7 +338,7 @@ export class TransactionInput {
         spendHeight: number,
         unlockTime: number,
         parentTransactionHash: string,
-        privateEphemeral: string) {
+        privateEphemeral?: string) {
 
         this.keyImage = keyImage;
         this.amount = amount;
@@ -444,7 +443,6 @@ export class KeyOutput {
 
         return Object.assign(keyOutput, {
             amount: json.amount,
-            globalIndex: json.globalIndex,
             key: json.key,
         });
     }
@@ -455,8 +453,7 @@ export class KeyOutput {
     /* The output amount */
     public readonly amount: number;
 
-    /* The index of the amount in the DB. The blockchain cache api returns
-       this, but the regular daemon does not. */
+    /* The index of the amount in the DB. */
     public readonly globalIndex?: number;
 
     constructor(
@@ -477,8 +474,7 @@ export class KeyInput {
 
         return Object.assign(keyInput, {
             amount: json.amount,
-            keyImage: json.k_image,
-            outputIndexes: json.key_offsets,
+            keyImage: json.keyImage,
         });
     }
 
@@ -488,18 +484,12 @@ export class KeyInput {
     /* The key image of this input */
     public readonly keyImage: string;
 
-    /* The output indexes of the fake and real outputs this input was created
-       from, in the global 'DB' */
-    public readonly outputIndexes: number[];
-
     constructor(
         amount: number,
-        keyImage: string,
-        outputIndexes: number[]) {
+        keyImage: string) {
 
         this.amount = amount;
         this.keyImage = keyImage;
-        this.outputIndexes = outputIndexes;
     }
 }
 
@@ -510,10 +500,10 @@ export class TransactionData {
     public transactionsToAdd: Transaction[] = [];
 
     /* Mapping of public spend key to inputs */
-    public inputsToAdd: Array<[string, TransactionInput]> = [];
+    public inputsToAdd: [string, TransactionInput][] = [];
 
     /* Mapping of public spend key to key image */
-    public keyImagesToMarkSpent: Array<[string, string]> = [];
+    public keyImagesToMarkSpent: [string, string][] = [];
 }
 
 /**
@@ -523,7 +513,7 @@ export class TxInputAndOwner {
     /* The input */
     public readonly input: TransactionInput;
 
-   /* The private spend key of the input owner */
+    /* The private spend key of the input owner */
     public readonly privateSpendKey: string;
 
     /* The public spend key of the input owner */
@@ -576,6 +566,33 @@ export interface PreparedTransactionInfo {
     rawTransaction?: CreatedTransaction;
     transactionHash?: string;
     prettyTransaction?: Transaction;
+    destinations?: Destinations;
+    nodeFee?: number;
+}
+
+export interface Destination {
+    address: string;
+    amount: number;
+}
+
+export interface Destinations {
+    /**
+     * The address and amount of the node fee. Will not be present if no node
+     * fee was charged.
+     */
+    nodeFee?: Destination;
+
+    /**
+     * The amount sent to ourselves as change.
+     */
+    change?: Destination;
+
+    /**
+     * The amounts we sent to each destination/destinations given in the
+     * sendTransactionBasic/sendTransactionAdvanced call. Can be helpful
+     * to determine how much was sent when using `sendAll`.
+     */
+    userDestinations: Destination[];
 }
 
 export interface SendTransactionResult {
@@ -614,11 +631,18 @@ export interface SendTransactionResult {
      * The object that can be stored client side to then relayed with sendRawPreparedTransaction
      */
     preparedTransaction?: PreparedTransaction;
-}
 
-export enum DaemonType {
-    ConventionalDaemon = 0,
-    BlockchainCacheApi = 1,
+    /**
+     * The amounts and addresses of node fee, change address, and user destinations.
+     * Will be present if success is true.
+     */
+    destinations?: Destinations;
+
+    /**
+     * The node fee we were charged. Will be present if success is true. In
+     * atomic units.
+     */
+    nodeFee?: number;
 }
 
 export interface DaemonConnection {
@@ -626,12 +650,6 @@ export interface DaemonConnection {
     host: string;
     /* What is the port of this daemon */
     port: number;
-
-    /* Is this daemon a conventional daemon or a blockchain cache API */
-    daemonType: DaemonType;
-    /* Have we worked out if this daemon is a conventional daemon or a cache
-       API yet */
-    daemonTypeDetermined: boolean;
 
     /* Is this daemon connection served over HTTPS or HTTP */
     ssl: boolean;

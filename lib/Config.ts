@@ -3,7 +3,9 @@
 // Please see the included LICENSE file for more information.
 
 import { MixinLimit, MixinLimits } from './MixinLimits';
+import { LedgerTransport } from 'turtlecoin-utils';
 
+/* eslint-disable @typescript-eslint/no-var-requires */
 const version = require('../../package.json').version;
 
 /**
@@ -96,37 +98,37 @@ export interface IConfig {
      */
     underivePublicKey?: (derivation: string,
                          outputIndex: number,
-                         outputKey: string) => string;
+                         outputKey: string) => Promise<string>;
 
     /**
      * A replacement function for the JS/C++ derivePublicKey.
      */
     derivePublicKey?: (derivation: string,
                        outputIndex: number,
-                       publicKey: string) => string;
+                       publicKey: string) => Promise<string>;
 
     /**
      * A replacement function for the JS/C++ deriveSecretKey.
      */
     deriveSecretKey?: (derivation: string,
                        outputIndex: number,
-                       privateKey: string) => string;
+                       privateKey: string) => Promise<string>;
 
     /**
      * A replacement function for the JS/C++ generateKeyImage.
      */
     generateKeyImage?: (publicKey: string,
-                        privateKey: string) => string;
+                        privateKey: string) => Promise<string>;
 
     /**
      * A replacement function for the JS/C++ secretKeyToPublicKey.
      */
-    secretKeyToPublicKey?: (privateKey: string) => string;
+    secretKeyToPublicKey?: (privateKey: string) => Promise<string>;
 
     /**
      * A replacement function for the JS/C++ cnFastHash.
      */
-    cnFastHash?: (input: string) => string;
+    cnFastHash?: (input: string) => Promise<string>;
 
     /**
      * A replacement function for the JS/C++ generateRingSignatures.
@@ -135,7 +137,7 @@ export interface IConfig {
                               keyImage: string,
                               inputKeys: string[],
                               privateKey: string,
-                              realIndex: number) => string[];
+                              realIndex: number) => Promise<string[]>;
 
     /**
      * A replacement function for the JS/C++ checkRingSignatures.
@@ -143,13 +145,13 @@ export interface IConfig {
     checkRingSignatures?: (transactionPrefixHash: string,
                            keyImage: string,
                            publicKeys: string[],
-                           signatures: string[]) => boolean;
+                           signatures: string[]) => Promise<boolean>;
 
     /**
      * A replacement function for the JS/C++ generateKeyDerivation.
      */
     generateKeyDerivation?: (transactionPublicKey: string,
-                             privateViewKey: string) => string;
+                             privateViewKey: string) => Promise<string>;
 
     /**
      * The max amount of memory to use, storing downloaded blocks to be processed.
@@ -192,6 +194,12 @@ export interface IConfig {
      */
     customRequestOptions?: any;
 
+    /**
+     * Defines whether we are using the LedgerNote class instead of the
+     * CryptoNote class
+     */
+    ledgerTransport?: LedgerTransport;
+
     [key: string]: any;
 }
 
@@ -205,13 +213,13 @@ export class Config implements IConfig {
      * The amount of decimal places your coin has, e.g. TurtleCoin has two
      * decimals
      */
-    public decimalPlaces: number = 2;
+    public decimalPlaces: number = 5;
 
     /**
      * The address prefix your coin uses - you can find this in CryptoNoteConfig.h.
      * In TurtleCoin, this converts to TRTL
      */
-    public addressPrefix: number = 3914525;
+    public addressPrefix: number = 10115542401;
 
     /**
      * Request timeout for daemon operations in milliseconds
@@ -248,7 +256,7 @@ export class Config implements IConfig {
     /**
      * Your coins 'ticker', generally used to refer to the coin, i.e. 123 TRTL
      */
-    public ticker: string = 'TRTL';
+    public ticker: string = 'NINJA';
 
     /**
      * Most people haven't mined any blocks, so lets not waste time scanning
@@ -277,64 +285,62 @@ export class Config implements IConfig {
      * Mapping of height to mixin maximum and mixin minimum
      */
     public mixinLimits: MixinLimits = new MixinLimits([
-        /* Height: 440,000, minMixin: 0, maxMixin: 100, defaultMixin: 3 */
-        new MixinLimit(440000, 0, 100, 3),
-
-        /* At height of 620000, static mixin of 7 */
-        new MixinLimit(620000, 7),
-
-        /* At height of 800000, static mixin of 3 */
-        new MixinLimit(800000, 3),
+	
+            new MixinLimits_1.MixinLimit(440000, 0, 3, 3),
+            /* At height of 471000, static mixin of 7 */
+            new MixinLimits_1.MixinLimit(471000, 0, 3, 3),
+            /* At height of 472000, static mixin of 3 */
+            new MixinLimits_1.MixinLimit(472000, 0, 3, 3),
     ], 3 /* Default mixin of 3 before block 440,000 */);
 
     /**
      * The length of a standard address for your coin
      */
-    public standardAddressLength: number = 99;
+    public standardAddressLength: number = 101;
 
     /* The length of an integrated address for your coin - It's the same as
        a normal address, but there is a paymentID included in there - since
        payment ID's are 64 chars, and base58 encoding is done by encoding
        chunks of 8 chars at once into blocks of 11 chars, we can calculate
        this automatically */
-    public integratedAddressLength: number = 99 + ((64 * 11) / 8);
+    public integratedAddressLength: number = 101 + ((64 * 11) / 8);
 
     /**
      * A replacement function for the JS/C++ underivePublicKey.
      */
     public underivePublicKey?: (derivation: string,
                                 outputIndex: number,
-                                outputKey: string) => string = undefined;
+                                outputKey: string) => Promise<string> = undefined;
 
     /**
      * A replacement function for the JS/C++ derivePublicKey.
      */
     public derivePublicKey?: (derivation: string,
                               outputIndex: number,
-                              publicKey: string) => string = undefined;
+                              publicKey: string) => Promise<string> = undefined;
 
     /**
      * A replacement function for the JS/C++ deriveSecretKey.
      */
     public deriveSecretKey?: (derivation: string,
                               outputIndex: number,
-                              privateKey: string) => string = undefined;
+                              privateKey: string) => Promise<string> = undefined;
 
     /**
      * A replacement function for the JS/C++ generateKeyImage.
      */
     public generateKeyImage?: (publicKey: string,
-                               privateKey: string) => string = undefined;
+                               privateKey: string) => Promise<string> = undefined;
 
     /**
      * A replacement function for the JS/C++ secretKeyToPublicKey.
      */
-    public secretKeyToPublicKey?: (privateKey: string) => string = undefined;
+    public secretKeyToPublicKey?: (privateKey: string) => Promise<string> = undefined;
 
     /**
      * A replacement function for the JS/C++ cnFastHash.
      */
-    public cnFastHash?: (input: string) => string = undefined;
+    public cnFastHash?: (input: string) => Promise<string> = undefined;
 
     /**
      * A replacement function for the JS/C++ generateRingSignatures.
@@ -343,20 +349,20 @@ export class Config implements IConfig {
                                      keyImage: string,
                                      inputKeys: string[],
                                      privateKey: string,
-                                     realIndex: number) => string[] = undefined;
+                                     realIndex: number) => Promise<string[]> = undefined;
     /**
      * A replacement function for the JS/C++ checkRingSignatures.
      */
     public checkRingSignatures?: (transactionPrefixHash: string,
                                   keyImage: string,
                                   publicKeys: string[],
-                                  signatures: string[]) => boolean = undefined;
+                                  signatures: string[]) => Promise<boolean> = undefined;
 
     /**
      * A replacement function for the JS/C++ generateKeyDerivation.
      */
     public generateKeyDerivation?: (transactionPublicKey: string,
-                                    privateViewKey: string) => string = undefined;
+                                    privateViewKey: string) => Promise<string> = undefined;
 
     /**
      * The amount of memory to use storing downloaded blocks - 50MB
@@ -398,6 +404,12 @@ export class Config implements IConfig {
      * Allows specifying a custom configuration object for the request module.
      */
     public customRequestOptions: any = {};
+
+    /**
+     * Defines whether we are using the LedgerNote class instead of the
+     * CryptoNote class
+     */
+    ledgerTransport?: LedgerTransport;
 
     [key: string]: any;
 }
