@@ -166,4 +166,4 @@ export const FUSION_TX_MIN_IN_OUT_COUNT_RATIO = 4;
 /**
  * Max amount to create a single output of
  */
-export const MAX_OUTPUT_SIZE_CLIENT = 100000000000;
+export const MAX_OUTPUT_SIZE_CLIENT = 10000000000000;
